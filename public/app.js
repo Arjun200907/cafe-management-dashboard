@@ -1,0 +1,26 @@
+const $=s=>document.querySelector(s); let chart,pieChart,visitChart,current=[];
+const money=n=>'₹'+Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2});
+function getDemo(){return window.CAFE_DEMO.dashboard}
+async function dashboard(){let d;try{const r=await fetch('/api/dashboard');if(!r.ok)throw new Error();const api=await r.json();if(api.error)throw new Error(api.error);d={...getDemo(),...api,sales:getDemo().sales,best:getDemo().best,visits:getDemo().visits,days:getDemo().days}}catch(e){d=getDemo()}
+// One source of truth: the top KPI cards use the same daily dataset as the day search.
+const todayDay=10;
+const today=d.days.find(x=>x.day===todayDay)||d.days[0];
+const yesterday=d.days.find(x=>x.day===todayDay-1);
+const avgOrder=today.orders?today.revenue/today.orders:0;
+$('#revenue').textContent=money(today.revenue);$('#orders').textContent=today.orders;$('#customers').textContent=today.customers;$('#avg').textContent=money(avgOrder);
+const revenueDelta=yesterday&&yesterday.revenue?((today.revenue-yesterday.revenue)/yesterday.revenue*100):0;
+const ordersDelta=yesterday&&yesterday.orders?((today.orders-yesterday.orders)/yesterday.orders*100):0;
+$('#revenueChange').textContent=`${revenueDelta>=0?'↗':'↘'} ${Math.abs(revenueDelta).toFixed(1)}%`;
+$('#ordersChange').textContent=`${ordersDelta>=0?'↗':'↘'} ${Math.abs(ordersDelta).toFixed(1)}%`;
+$('#customerNote').textContent=`${today.customers} visitors today`;
+$('#avgNote').textContent=`₹${avgOrder.toFixed(2)} per order`;
+$('#best').innerHTML=d.best.map((x,i)=>`<div class="item"><span><b>${i+1}. ${x.name}</b><br><small>${money(x.revenue)} revenue</small></span><span class="badge">${x.quantity} sold</span></div>`).join('');$('#low').innerHTML=d.low.length?d.low.map(x=>`<div class="alert"><b>${x.item_name}</b><br><small>${x.current_stock} remaining · minimum ${x.minimum_stock_level}</small></div>`).join(''):'<p>All inventory levels are healthy ✓</p>';$('#recent').innerHTML='<tr><th>Order</th><th>Customer</th><th>Employee</th><th>Total</th></tr>'+d.recent.map(x=>`<tr><td>#${x.order_id}</td><td>${x.customer}</td><td>${x.employee}</td><td>${money(x.total_amount)}</td></tr>`).join('');
+if(chart)chart.destroy();chart=new Chart($('#salesChart'),{type:'line',data:{labels:d.sales.map(x=>x.day),datasets:[{label:'Revenue',data:d.sales.map(x=>x.sales),tension:.38,fill:true,borderColor:'#b8793c',backgroundColor:'rgba(184,121,60,.10)',pointRadius:2,borderWidth:2}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:'#f1ede7'}},x:{grid:{display:false},ticks:{maxTicksLimit:10}}}}});
+if(pieChart)pieChart.destroy();pieChart=new Chart($('#foodPie'),{type:'pie',data:{labels:d.best.map(x=>x.name),datasets:[{data:d.best.map(x=>x.quantity)}]},options:{responsive:true,plugins:{legend:{position:'right'}}}});
+if(visitChart)visitChart.destroy();visitChart=new Chart($('#visitChart'),{type:'bar',data:{labels:d.visits.map(x=>x.slot),datasets:[{label:'Customer visits',data:d.visits.map(x=>x.customers),borderRadius:7}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,title:{display:true,text:'Customers'}},x:{grid:{display:false},title:{display:true,text:'Time Slot'}}}}});}
+function showDay(){const n=Number($('#dayNumber').value);const d=getDemo().days.find(x=>x.day===n);if(!Number.isInteger(n)||n<1||n>30){$('#dayResult').innerHTML='<b>Please enter a valid day from 1 to 30.</b>';return}$('#dayResult').innerHTML=`<b>${n} September 2026</b><div class="day-stats"><span>Orders: <b>${d.orders}</b></span><span>Revenue: <b>${money(d.revenue)}</b></span><span>Customers: <b>${d.customers}</b></span><span>Top item: <b>${d.top}</b></span></div>`}
+$('#showDay').onclick=showDay;$('#dayNumber').addEventListener('keydown',e=>{if(e.key==='Enter')showDay()});
+async function loadTable(name){let d;try{const r=await fetch('/api/'+name);if(!r.ok)throw new Error();d=await r.json();if(d.error)throw new Error(d.error)}catch(e){d=window.CAFE_DEMO[name]||[]}if(name==='menu_items' && (!d || d.length<15))d=window.CAFE_DEMO.menu_items;current=d;render(d)}
+function render(rows){if(!rows.length){$('#dataTable').innerHTML='<tr><td>No records found.</td></tr>';return}const keys=Object.keys(rows[0]);$('#dataTable').innerHTML='<tr>'+keys.map(k=>`<th>${k.replaceAll('_',' ')}</th>`).join('')+'</tr>'+rows.map(x=>'<tr>'+keys.map(k=>`<td>${x[k]??'—'}</td>`).join('')+'</tr>').join('')}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');const p=b.dataset.page;$('.page.active').classList.remove('active');if(p==='dashboard'){$('#dashboard').classList.add('active');$('#title').textContent='Dashboard';dashboard()}else{$('#dataPage').classList.add('active');$('#title').textContent=p.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase());$('#tableTitle').textContent=$('#title').textContent+' Records';loadTable(p)}if(innerWidth<900)$('#side').classList.remove('open')});
+$('#search').oninput=e=>{const q=e.target.value.toLowerCase();render(current.filter(r=>Object.values(r).some(v=>String(v??'').toLowerCase().includes(q))))};$('#collapse').onclick=()=>$('#side').classList.toggle('collapsed');$('#mobile').onclick=()=>$('#side').classList.toggle('open');dashboard();
